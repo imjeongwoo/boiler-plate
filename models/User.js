@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
+const jwt = require('jsonwebtoken');
 
 const userSchema = mongoose.Schema({
     name: {
@@ -34,7 +35,7 @@ const userSchema = mongoose.Schema({
 });
 
 userSchema.pre('save', function (next) {
-    let user = this;
+    var user = this;
     if (user.isModified('password')) {
         bcrypt.genSalt(saltRounds, (err, salt) => {
             if (err) return next(err);
@@ -50,6 +51,37 @@ userSchema.pre('save', function (next) {
         next();
     }
 });
+
+userSchema.methods.comparePassword = function (plainPassword, callback) {
+    bcrypt.compare(plainPassword, this.password, function (err, isMatch) {
+        if (err) return callback(err)
+        callback(null, isMatch)
+    })
+}
+
+userSchema.methods.generateToken = function (callback) {
+    var user = this;
+    // JWT로 토큰 생성
+    var token = jwt.sign(user._id.toHexString(), 'secretToken')
+    
+    user.token = token
+    user.save(function (err, user) {
+        if (err) return callback(err)
+        callback(null, user)
+    })
+}
+
+userSchema.statics.findByToken = function (token, callback) {
+    var user = this;
+    // 토큰 decode
+    jwt.verify(token, 'secretToken', function (err, decoded) {
+        // 유저 아이디를 이용해서 유저 찾기
+        user.findOne({ "_id": decoded, "token": token }, function (err, user) {
+            if (err) return callback(err);
+            callback(null, user);
+        })
+    })
+}
 
 const User = mongoose.model('User', userSchema);
 
